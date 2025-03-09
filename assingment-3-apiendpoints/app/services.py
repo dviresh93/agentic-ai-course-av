@@ -110,181 +110,155 @@ def get_historical_data(symbol, start_date, end_date):
 
 def get_company_news(symbol):
     """
-    Get recent news articles about a company.
-    
-    Retrieves news articles related to the specified company from Yahoo Finance.
+    Retrieve news articles for a given company symbol.
     
     Args:
         symbol (str): The stock symbol of the company (e.g., 'AAPL')
         
     Returns:
-        dict: News articles with title, publisher, date, and link
-        
-    Raises:
-        Exception: If there's an error fetching the news
+        dict: News articles and metadata
     """
-    logger.info(f"Fetching news for {symbol}")
+    logger.info(f"Retrieving news for {symbol}")
+    
     try:
-        # Create a Ticker object and fetch news data
-        stock = yf.Ticker(symbol)
-        news_data = stock.news
+        # Create a Ticker object
+        ticker = yf.Ticker(symbol)
         
-        # Format the news data
-        news = []
-        for item in news_data[:10]:  # Limit to 10 news items
-            news.append({
-                "title": item.get('title', 'No title'),
-                "publisher": item.get('publisher', 'Unknown'),
-                "published": datetime.fromtimestamp(item.get('providerPublishTime', 0)).strftime('%Y-%m-%d %H:%M'),
-                "link": item.get('link', '#')
-            })
+        # Get news data
+        news_data = ticker.news
+        
+        # Debug the news data structure
+        logger.info(f"Retrieved {len(news_data)} news items")
+        if news_data and len(news_data) > 0:
+            logger.info(f"First news item keys: {news_data[0].keys()}")
+            logger.info(f"Sample news item: {news_data[0]}")
+        
+        # Process news items with better error handling
+        processed_news = []
+        for item in news_data:
+            try:
+                # Check if content field exists (new structure)
+                content = item.get('content', {})
+                
+                # Extract title from either direct or nested structure
+                title = item.get('title', None)
+                if not title and isinstance(content, dict):
+                    title = content.get('title', 'No title available')
+                
+                # Extract publisher info
+                provider = content.get('provider', {}) if isinstance(content, dict) else {}
+                publisher = provider.get('displayName', 'Unknown') if isinstance(provider, dict) else 'Unknown'
+                
+                # Extract publication date
+                pub_date = 'Unknown date'
+                if isinstance(content, dict) and content.get('pubDate'):
+                    # Format ISO date string to readable format
+                    try:
+                        date_str = content.get('pubDate')
+                        # Convert ISO format to datetime and then to string
+                        dt = datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%SZ')
+                        pub_date = dt.strftime('%Y-%m-%d %H:%M')
+                    except Exception as e:
+                        logger.error(f"Error parsing date: {str(e)}")
+                
+                # Extract link
+                link = '#'
+                if isinstance(content, dict) and content.get('clickThroughUrl'):
+                    click_url = content.get('clickThroughUrl')
+                    if isinstance(click_url, dict):
+                        link = click_url.get('url', '#')
+                
+                processed_news.append({
+                    'title': title,
+                    'publisher': publisher,
+                    'published': pub_date,
+                    'link': link
+                })
+                
+                # Log successful processing
+                logger.info(f"Processed news item: {title[:30]}... from {publisher}")
+                
+            except Exception as e:
+                logger.error(f"Error processing news item: {str(e)}")
+                logger.error(f"Problematic item: {item}")
         
         return {
-            "symbol": symbol,
-            "news_count": len(news),
-            "news": news
+            'symbol': symbol,
+            'news_count': len(processed_news),
+            'news': processed_news
         }
     except Exception as e:
-        logger.error(f"Error fetching news: {str(e)}")
-        raise
+        logger.error(f"Error retrieving news for {symbol}: {str(e)}")
+        raise Exception(f"Failed to retrieve news: {str(e)}")
 
 def analyze_financial_data(symbol):
     """
-    Analyze financial data and calculate key metrics for a company.
+    Analyze financial data for a given company symbol.
     
-    Retrieves financial statements (income statement, balance sheet, cash flow)
-    and calculates key financial ratios and metrics. Also provides trend analysis
-    and recommendations based on the financial health of the company.
+    Retrieves and analyzes financial statements, calculates key ratios,
+    and provides performance metrics and insights.
     
     Args:
         symbol (str): The stock symbol of the company (e.g., 'AAPL')
         
     Returns:
-        dict: Financial analysis including metrics, trends, and recommendations
-        
-    Raises:
-        Exception: If there's an error analyzing the data
+        dict: Financial analysis results including income statement, balance sheet,
+              cash flow, key ratios, and performance metrics
     """
     logger.info(f"Analyzing financial data for {symbol}")
+    
     try:
         # Create a Ticker object
-        stock = yf.Ticker(symbol)
+        ticker = yf.Ticker(symbol)
         
-        # Get financial statements
-        income_stmt = stock.income_stmt
-        balance_sheet = stock.balance_sheet
-        cash_flow = stock.cashflow
+        # Get financial data
+        logger.info(f"Fetching financial statements for {symbol}")
+        income_stmt = ticker.income_stmt
+        balance_sheet = ticker.balance_sheet
+        cash_flow = ticker.cashflow
         
-        # Initialize results dictionary with basic company info
-        analysis = {
+        # Get company info for summary metrics
+        info = ticker.info
+        
+        # Basic metrics - handle NaN values
+        market_cap = info.get('marketCap', 'N/A')
+        pe_ratio = info.get('trailingPE', 'N/A')
+        if pd.isna(pe_ratio):
+            pe_ratio = 'N/A'
+            
+        forward_pe = info.get('forwardPE', 'N/A')
+        if pd.isna(forward_pe):
+            forward_pe = 'N/A'
+            
+        dividend_yield = info.get('dividendYield', 'N/A')
+        if pd.isna(dividend_yield):
+            dividend_yield = 'N/A'
+        elif dividend_yield != 'N/A':
+            dividend_yield = f"{dividend_yield * 100:.2f}%"
+        
+        # Simplify the response to match expected format in the frontend
+        return {
+            "company": info.get('shortName', symbol),
             "symbol": symbol,
-            "company_name": stock.info.get('shortName', 'N/A'),
-            "current_price": stock.info.get('currentPrice', 'N/A'),
-            "metrics": {},
-            "trends": {},
-            "recommendations": []
+            "summary": {
+                "Market Cap": market_cap,
+                "P/E Ratio": pe_ratio,
+                "Forward P/E": forward_pe,
+                "Dividend Yield": dividend_yield,
+                "52 Week High": info.get('fiftyTwoWeekHigh', 'N/A'),
+                "52 Week Low": info.get('fiftyTwoWeekLow', 'N/A')
+            },
+            # Include simplified financial data
+            "income_statement": "Available" if not income_stmt.empty else "Not available",
+            "balance_sheet": "Available" if not balance_sheet.empty else "Not available",
+            "cash_flow": "Available" if not cash_flow.empty else "Not available"
         }
-        
-        # Calculate key metrics if financial data is available
-        if not income_stmt.empty and not balance_sheet.empty:
-            try:
-                # Get the most recent year's data and previous year for comparison
-                latest_year = income_stmt.columns[0]
-                prev_year = income_stmt.columns[1] if len(income_stmt.columns) > 1 else None
-                
-                # Extract key financial figures from statements
-                net_income = income_stmt.loc['Net Income', latest_year]
-                revenue = income_stmt.loc['Total Revenue', latest_year]
-                total_assets = balance_sheet.loc['Total Assets', latest_year]
-                total_equity = balance_sheet.loc['Total Stockholder Equity', latest_year]
-                
-                # Calculate liquidity metrics (handle missing data gracefully)
-                current_assets = balance_sheet.loc['Current Assets', latest_year] if 'Current Assets' in balance_sheet.index else None
-                current_liabilities = balance_sheet.loc['Current Liabilities', latest_year] if 'Current Liabilities' in balance_sheet.index else None
-                
-                # Calculate debt metrics (handle missing data gracefully)
-                total_debt = balance_sheet.loc['Total Debt', latest_year] if 'Total Debt' in balance_sheet.index else None
-                
-                # Store calculated metrics in a dictionary
-                metrics = {}
-                
-                # Calculate profitability ratios
-                if revenue > 0:
-                    metrics["net_profit_margin"] = round((net_income / revenue) * 100, 2)
-                
-                if total_assets > 0:
-                    metrics["return_on_assets"] = round((net_income / total_assets) * 100, 2)
-                
-                if total_equity > 0:
-                    metrics["return_on_equity"] = round((net_income / total_equity) * 100, 2)
-                
-                # Calculate liquidity ratios
-                if current_assets is not None and current_liabilities is not None and current_liabilities > 0:
-                    metrics["current_ratio"] = round(current_assets / current_liabilities, 2)
-                
-                # Calculate solvency ratios
-                if total_debt is not None and total_equity > 0:
-                    metrics["debt_to_equity"] = round(total_debt / total_equity, 2)
-                
-                analysis["metrics"] = metrics
-                
-                # Calculate trends if previous year data is available
-                if prev_year is not None:
-                    trends = {}
-                    
-                    # Extract previous year's data for comparison
-                    prev_revenue = income_stmt.loc['Total Revenue', prev_year]
-                    prev_net_income = income_stmt.loc['Net Income', prev_year]
-                    
-                    # Calculate year-over-year growth rates
-                    if prev_revenue > 0:
-                        trends["revenue_growth"] = round(((revenue - prev_revenue) / prev_revenue) * 100, 2)
-                    
-                    if prev_net_income > 0:
-                        trends["net_income_growth"] = round(((net_income - prev_net_income) / prev_net_income) * 100, 2)
-                    
-                    analysis["trends"] = trends
-                
-                # Generate recommendations based on financial metrics
-                recommendations = []
-                
-                # ROE recommendations
-                if metrics.get("return_on_equity", 0) > 15:
-                    recommendations.append("Strong ROE indicates efficient use of shareholder equity")
-                elif metrics.get("return_on_equity", 0) < 5:
-                    recommendations.append("Low ROE may indicate inefficient use of capital")
-                
-                # Profit margin recommendations
-                if metrics.get("net_profit_margin", 0) > 20:
-                    recommendations.append("High profit margin indicates strong pricing power")
-                elif metrics.get("net_profit_margin", 0) < 5:
-                    recommendations.append("Low profit margin may indicate operational inefficiencies")
-                
-                # Liquidity recommendations
-                if metrics.get("current_ratio", 0) > 2:
-                    recommendations.append("Strong liquidity position")
-                elif metrics.get("current_ratio", 0) < 1:
-                    recommendations.append("Potential liquidity concerns")
-                
-                # Debt level recommendations
-                if metrics.get("debt_to_equity", 0) > 2:
-                    recommendations.append("High debt levels may increase financial risk")
-                elif metrics.get("debt_to_equity", 0) < 0.5:
-                    recommendations.append("Conservative debt levels")
-                
-                analysis["recommendations"] = recommendations
-                
-            except Exception as e:
-                # Log the error but continue with partial analysis
-                logger.error(f"Error calculating financial metrics: {str(e)}")
-                analysis["error_details"] = f"Could not calculate some metrics: {str(e)}"
-        else:
-            analysis["error_details"] = "Insufficient financial data available"
-        
-        return analysis
     except Exception as e:
-        logger.error(f"Error analyzing financial data: {str(e)}")
-        raise
+        logger.error(f"Error analyzing financial data for {symbol}: {str(e)}")
+        return {
+            "error": f"Failed to analyze financial data: {str(e)}",
+            "symbol": symbol
+        }
 
 def analyze_historical_data(historical_data):
     """

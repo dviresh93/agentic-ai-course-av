@@ -18,8 +18,13 @@ from app.config import config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Get the environment from an environment variable, defaulting to 'default'
+env = os.environ.get('FLASK_ENV', 'default')
+# Get the appropriate configuration class
+config_class = config[env]
+
 # Create the Flask application instance
-app = create_app()
+app = create_app(env)
 
 def main():
     """
@@ -60,8 +65,8 @@ def main():
     # Note: Debug mode should be disabled in production
     app.run(
         host='0.0.0.0',  # Make server accessible from any network interface
-        debug=config.DEBUG,  # Use debug setting from config
-        port=config.PORT,  # Use port from config, defaulting to 5000
+        debug=config_class.DEBUG,  # Use debug setting from config class
+        port=config_class.PORT,  # Use port from config class, defaulting to 5000
         ssl_context=ssl_context  # Apply SSL context if available
     )
 

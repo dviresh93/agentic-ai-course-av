@@ -107,7 +107,7 @@ def historical_endpoint():
         logger.error(f"Error in historical endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@api_bp.route('/analyze-financials')
+@api_bp.route('/analyze-financials', methods=['GET', 'POST'])
 def analyze_financials_endpoint():
     """
     Endpoint for financial data analysis.
@@ -120,11 +120,18 @@ def analyze_financials_endpoint():
     Returns:
         JSON response with financial analysis or error message
     """
-    symbol = request.args.get('symbol', '')
+    # Get symbol from either GET parameters or POST JSON
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        symbol = data.get('symbol', '')
+    else:
+        symbol = request.args.get('symbol', '')
+        
     if not symbol:
         return jsonify({"error": "Symbol is required"}), 400
     
     try:
+        # Call the service function to analyze financial data
         result = analyze_financial_data(symbol)
         return jsonify(result)
     except Exception as e:
