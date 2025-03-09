@@ -1,0 +1,465 @@
+<!-- app/templates/home.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Yahoo Finance API</title>
+    <!-- 
+    CSS Styles
+    - Defines the visual appearance of the application
+    - Uses a clean, minimalist design for readability
+    - Includes specific styling for tables, news items, and analysis results
+    -->
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #333; }
+        .endpoint { background: #f5f5f5; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
+        .endpoint h2 { margin-top: 0; color: #2c3e50; }
+        form { margin-top: 10px; }
+        label, input, button { margin: 5px; }
+        button { background: #4CAF50; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; }
+        button.reset { background: #f44336; }
+        pre { background: #f9f9f9; padding: 10px; border-radius: 4px; overflow-x: auto; max-height: 300px; }
+        .result-container { margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        table, th, td { border: 1px solid #ddd; }
+        th, td { padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .news-item { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .news-item:last-child { border-bottom: none; }
+        .news-title { font-weight: bold; }
+        .news-meta { color: #666; font-size: 0.9em; margin: 5px 0; }
+        .news-link { color: #4285f4; }
+        .positive { color: green; }
+        .negative { color: red; }
+        .insights, .recommendations { padding-left: 20px; }
+        .insights li, .recommendations li { margin-bottom: 8px; }
+        #analyze-button { padding: 10px 20px; font-weight: bold; background-color: #2196F3; margin-top: 15px; }
+        .error { color: #f44336; font-weight: bold; }
+        .section-description {
+            color: #666;
+            margin: 5px 0 15px 0;
+            font-size: 0.95em;
+            line-height: 1.4;
+        }
+    </style>
+    
+    <!-- 
+    JavaScript Functions
+    - Handle form submissions and API interactions
+    - Format and display the returned data
+    - Manage UI state (show/hide elements, reset forms)
+    -->
+    <script>
+        /**
+         * Formats API response data as an HTML table based on data type
+         * @param {Object} data - The data returned from the API
+         * @param {string} type - The type of data ('company', 'historical', 'news', etc.)
+         * @returns {string} HTML representation of the data
+         */
+        function formatAsTable(data, type) {
+            // Handle empty or invalid data
+            if (!data || typeof data !== 'object') return '<p>No data available</p>';
+            
+            // Format company information
+            if (type === 'company') {
+                let html = '<table>';
+                html += '<tr><th>Property</th><th>Value</th></tr>';
+                for (const [key, value] of Object.entries(data)) {
+                    if (key !== 'symbol') {
+                        html += `<tr><td>${key}</td><td>${value}</td></tr>`;
+                    }
+                }
+                html += '</table>';
+                return html;
+            } 
+            // Format historical price data
+            else if (type === 'historical') {
+                if (!data.data || !data.data.length) return '<p>No historical data available</p>';
+                
+                let html = `<p>Period: ${data.period}</p><table>`;
+                html += '<tr><th>Date</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th></tr>';
+                
+                for (const item of data.data) {
+                    html += `<tr>
+                        <td>${item.date}</td>
+                        <td>${parseFloat(item.open).toFixed(2)}</td>
+                        <td>${parseFloat(item.high).toFixed(2)}</td>
+                        <td>${parseFloat(item.low).toFixed(2)}</td>
+                        <td>${parseFloat(item.close).toFixed(2)}</td>
+                        <td>${parseInt(item.volume).toLocaleString()}</td>
+                    </tr>`;
+                }
+                html += '</table>';
+                return html;
+            } 
+            // Format news articles
+            else if (type === 'news') {
+                if (!data.news || !data.news.length) return '<p>No news available</p>';
+                
+                let html = `<p>Found ${data.news_count} news items</p>`;
+                
+                for (const item of data.news) {
+                    html += `<div class="news-item">
+                        <div class="news-title">${item.title}</div>
+                        <div class="news-meta">Published by ${item.publisher} on ${item.published}</div>
+                        <a href="${item.link}" target="_blank" class="news-link">Read more</a>
+                    </div>`;
+                }
+                return html;
+            }
+            // Format financial analysis data
+            else if (type === 'analyze') {
+                if (!data || Object.keys(data).length === 0) return '<p>No financial analysis available</p>';
+                
+                let html = '<h3>Financial Analysis</h3>';
+                
+                // Format each section of the financial analysis
+                if (data.summary) {
+                    html += '<h4>Summary</h4><table>';
+                    html += '<tr><th>Metric</th><th>Value</th></tr>';
+                    
+                    for (const [key, value] of Object.entries(data.summary)) {
+                        html += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${value}</td></tr>`;
+                    }
+                    
+                    html += '</table>';
+                }
+                
+                if (data.ratios) {
+                    html += '<h4>Key Ratios</h4><table>';
+                    html += '<tr><th>Ratio</th><th>Value</th></tr>';
+                    
+                    for (const [key, value] of Object.entries(data.ratios)) {
+                        html += `<tr><td>${key.replace(/_/g, ' ')}</td><td>${value}</td></tr>`;
+                    }
+                    
+                    html += '</table>';
+                }
+                
+                if (data.insights && data.insights.length) {
+                    html += '<h4>Insights</h4><ul>';
+                    
+                    for (const insight of data.insights) {
+                        html += `<li>${insight}</li>`;
+                    }
+                    
+                    html += '</ul>';
+                }
+                
+                return html;
+            }
+            
+            // Default case if type is not recognized
+            return '<p>Unknown data format</p>';
+        }
+        
+        /**
+         * Formats analysis results into readable HTML
+         * @param {Object} analysis - The analysis data returned from the API
+         * @returns {string} HTML representation of the analysis
+         */
+        function formatAnalysisResults(analysis) {
+            if (!analysis || typeof analysis !== 'object') {
+                return '<p>No analysis available</p>';
+            }
+            
+            let html = '<h3>Market Analysis</h3>';
+            
+            // Summary section
+            const summary = analysis.summary || {};
+            html += '<h4>Price Summary</h4>';
+            html += '<table>';
+            html += '<tr><th>Metric</th><th>Value</th></tr>';
+            
+            if (summary.latest_price !== null)
+                html += `<tr><td>Latest Price</td><td>$${summary.latest_price}</td></tr>`;
+            
+            if (summary.price_change !== null) {
+                const changeClass = summary.price_change >= 0 ? 'positive' : 'negative';
+                html += `<tr><td>Price Change</td><td class="${changeClass}">$${summary.price_change}</td></tr>`;
+            }
+            
+            if (summary.price_change_percent !== null) {
+                const changeClass = summary.price_change_percent >= 0 ? 'positive' : 'negative';
+                html += `<tr><td>Price Change %</td><td class="${changeClass}">${summary.price_change_percent}%</td></tr>`;
+            }
+            
+            if (summary.highest_price !== null)
+                html += `<tr><td>Highest Price</td><td>$${summary.highest_price}</td></tr>`;
+            
+            if (summary.lowest_price !== null)
+                html += `<tr><td>Lowest Price</td><td>$${summary.lowest_price}</td></tr>`;
+            
+            if (summary.average_price !== null)
+                html += `<tr><td>Average Price</td><td>$${summary.average_price}</td></tr>`;
+            
+            if (summary.volatility !== null)
+                html += `<tr><td>Volatility</td><td>${summary.volatility}%</td></tr>`;
+            
+            html += '</table>';
+            
+            // Technical indicators
+            const indicators = analysis.technical_indicators;
+            if (indicators && (indicators.sma_20 || indicators.sma_50 || indicators.sma_200)) {
+                html += '<h4>Technical Indicators</h4>';
+                html += '<table>';
+                html += '<tr><th>Indicator</th><th>Value</th></tr>';
+                
+                if (indicators.sma_20 !== null)
+                    html += `<tr><td>20-Day Moving Average</td><td>$${indicators.sma_20}</td></tr>`;
+                
+                if (indicators.sma_50 !== null)
+                    html += `<tr><td>50-Day Moving Average</td><td>$${indicators.sma_50}</td></tr>`;
+                
+                if (indicators.sma_200 !== null)
+                    html += `<tr><td>200-Day Moving Average</td><td>$${indicators.sma_200}</td></tr>`;
+                
+                html += '</table>';
+            }
+            
+            // Volume analysis
+            const volume = analysis.volume_analysis;
+            if (volume && (volume.average_volume || volume.latest_volume)) {
+                html += '<h4>Volume Analysis</h4>';
+                html += '<table>';
+                html += '<tr><th>Metric</th><th>Value</th></tr>';
+                
+                if (volume.average_volume !== null)
+                    html += `<tr><td>Average Volume</td><td>${volume.average_volume.toLocaleString()}</td></tr>`;
+                
+                if (volume.latest_volume !== null)
+                    html += `<tr><td>Latest Volume</td><td>${volume.latest_volume.toLocaleString()}</td></tr>`;
+                
+                if (volume.volume_trend !== null)
+                    html += `<tr><td>Volume Trend</td><td>${volume.volume_trend}</td></tr>`;
+                
+                html += '</table>';
+            }
+            
+            // Insights
+            if (analysis.insights && analysis.insights.length > 0) {
+                html += '<h4>Market Insights</h4>';
+                html += '<ul class="insights">';
+                for (const insight of analysis.insights) {
+                    html += `<li>${insight}</li>`;
+                }
+                html += '</ul>';
+            }
+            
+            // Recommendations
+            if (analysis.recommendations && analysis.recommendations.length > 0) {
+                html += '<h4>Recommendations</h4>';
+                html += '<ul class="recommendations">';
+                for (const rec of analysis.recommendations) {
+                    html += `<li>${rec}</li>`;
+                }
+                html += '</ul>';
+            }
+            
+            return html;
+        }
+        
+        /**
+         * Resets a form and clears its result container
+         * @param {string} formId - The ID of the form to reset
+         * @param {string} resultId - The ID of the result container to clear
+         */
+        function resetForm(formId, resultId) {
+            document.getElementById(formId).reset();
+            document.getElementById(resultId).innerHTML = '';
+            
+            // Special handling for historical form to also hide analyze button and clear analysis
+            if (formId === 'historical-form') {
+                document.getElementById('analyze-button').style.display = 'none';
+                document.getElementById('analysis-result').innerHTML = '';
+            }
+        }
+        
+        /**
+         * Handles form submission for all endpoints
+         * @param {Event} event - The form submission event
+         * @param {string} endpoint - The API endpoint to call
+         * @param {string} resultId - The ID of the element to display results in
+         * @param {string} type - The type of data being requested
+         */
+        function submitForm(event, endpoint, resultId, type) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            
+            // Show loading indicator
+            document.getElementById(resultId).innerHTML = '<p>Loading data...</p>';
+            
+            // Special handling for historical data with POST
+            if (endpoint === 'historical') {
+                const symbol = formData.get('symbol');
+                const startDate = formData.get('start_date');
+                const endDate = formData.get('end_date');
+                
+                console.log(`Fetching historical data for ${symbol} from ${startDate} to ${endDate}`); // Debug log
+                
+                fetch('/historical', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        symbol: symbol,
+                        start_date: startDate,
+                        end_date: endDate
+                    })
+                })
+                .then(response => {
+                    console.log('Response status:', response.status); // Debug log
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Data received:', data); // Debug log
+                    if (data.error) {
+                        document.getElementById(resultId).innerHTML = `<p class="error">Error: ${data.error}</p>`;
+                        document.getElementById('analyze-button').style.display = 'none';
+                    } else {
+                        document.getElementById(resultId).innerHTML = formatAsTable(data, type);
+                        document.getElementById('analyze-button').style.display = 'block';
+                        document.getElementById('analysis-result').innerHTML = '';
+                    }
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error); // Debug log
+                    document.getElementById(resultId).innerHTML = `<p class="error">Error: ${error}</p>`;
+                    document.getElementById('analyze-button').style.display = 'none';
+                });
+                
+                return;
+            }
+            
+            // For other endpoints, use GET with URL parameters
+            const params = new URLSearchParams();
+            for (const [key, value] of formData.entries()) {
+                params.append(key, value);
+            }
+            
+            fetch(`/${endpoint}?${params.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById(resultId).innerHTML = `<p class="error">Error: ${data.error}</p>`;
+                    } else {
+                        document.getElementById(resultId).innerHTML = formatAsTable(data, type);
+                    }
+                })
+                .catch(error => {
+                    document.getElementById(resultId).innerHTML = `<p class="error">Error: ${error}</p>`;
+                });
+        }
+        
+        /**
+         * Analyzes historical data that has already been fetched
+         * Triggered by the "Analyze Insights" button
+         */
+        function analyzeHistoricalData() {
+            const symbol = document.getElementById('symbol3').value;
+            const startDate = document.getElementById('start_date').value;
+            const endDate = document.getElementById('end_date').value;
+            
+            // Show loading indicator
+            document.getElementById('analysis-result').innerHTML = '<p>Analyzing data, please wait...</p>';
+            
+            fetch('/analyze-historical', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    symbol: symbol,
+                    start_date: startDate,
+                    end_date: endDate
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('analysis-result').innerHTML = `<p class="error">Error: ${data.error}</p>`;
+                } else {
+                    document.getElementById('analysis-result').innerHTML = formatAnalysisResults(data.analysis);
+                }
+            })
+            .catch(error => {
+                document.getElementById('analysis-result').innerHTML = `<p class="error">Error: ${error}</p>`;
+            });
+        }
+        
+        /**
+         * Resets the historical form and clears all related displays
+         */
+        function resetHistoricalForm() {
+            document.getElementById('historical-form').reset();
+            document.getElementById('historical-result').innerHTML = '';
+            document.getElementById('analyze-button').style.display = 'none';
+            document.getElementById('analysis-result').innerHTML = '';
+        }
+    </script>
+</head>
+<body>
+    <h1>Yahoo Finance API</h1>
+    
+    <!-- 1. Company Information Section -->
+    <div class="endpoint">
+        <h2>Company Information</h2>
+        <p class="section-description">Get basic details about a company including sector, industry, market cap, and current price.</p>
+        <form id="company-form" onsubmit="submitForm(event, 'company', 'company-result', 'company')">
+            <label for="symbol1">Company Symbol:</label>
+            <input type="text" id="symbol1" name="symbol" required placeholder="AAPL">
+            <button type="submit">Get Info</button>
+            <button type="button" class="reset" onclick="resetForm('company-form', 'company-result')">Reset</button>
+        </form>
+        <div id="company-result" class="result-container"></div>
+    </div>
+    
+    <!-- 2. Company News Section -->
+    <div class="endpoint">
+        <h2>Company News</h2>
+        <p class="section-description">Retrieve the latest news articles and press releases about the company.</p>
+        <form id="news-form" onsubmit="submitForm(event, 'news', 'news-result', 'news')">
+            <label for="symbol2">Company Symbol:</label>
+            <input type="text" id="symbol2" name="symbol" required placeholder="AAPL">
+            <button type="submit">Get News</button>
+            <button type="button" class="reset" onclick="resetForm('news-form', 'news-result')">Reset</button>
+        </form>
+        <div id="news-result" class="result-container"></div>
+    </div>
+    
+    <!-- 3. Historical Data Section -->
+    <div class="endpoint">
+        <h2>Historical Data</h2>
+        <p class="section-description">View stock price history for a specific date range. After retrieving data, you can analyze it for trends and insights.</p>
+        <form id="historical-form" onsubmit="submitForm(event, 'historical', 'historical-result', 'historical')">
+            <label for="symbol3">Company Symbol:</label>
+            <input type="text" id="symbol3" name="symbol" required placeholder="AAPL">
+            <label for="start_date">Start Date:</label>
+            <input type="date" id="start_date" name="start_date" required>
+            <label for="end_date">End Date:</label>
+            <input type="date" id="end_date" name="end_date" required>
+            <button type="submit">Get History</button>
+            <button type="button" class="reset" onclick="resetForm('historical-form', 'historical-result')">Reset</button>
+        </form>
+        <div id="historical-result" class="result-container"></div>
+        <button id="analyze-button" style="display: none;" onclick="analyzeHistoricalData()">Analyze Insights</button>
+        <div id="analysis-result" class="result-container"></div>
+    </div>
+    
+    <!-- 4. Analyze Financial Data Section -->
+    <div class="endpoint">
+        <h2>Analyze Financial Data</h2>
+        <p class="section-description">Examine the company's financial statements, key ratios, and performance metrics from recent quarters and years.</p>
+        <form id="analyze-form" onsubmit="submitForm(event, 'analyze-financials', 'analyze-result', 'analyze')">
+            <label for="symbol4">Company Symbol:</label>
+            <input type="text" id="symbol4" name="symbol" required placeholder="AAPL">
+            <button type="submit">Analyze Financials</button>
+            <button type="button" class="reset" onclick="resetForm('analyze-form', 'analyze-result')">Reset</button>
+        </form>
+        <div id="analyze-result" class="result-container"></div>
+    </div>
+</body>
+</html>
